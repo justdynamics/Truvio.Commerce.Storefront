@@ -2,8 +2,9 @@ import { GridTileImage } from "components/grid/tile";
 import Footer from "components/layout/footer";
 import { Gallery } from "components/product/gallery";
 import { ProductDescription } from "components/product/product-description";
+import Price from "components/price";
 import { HIDDEN_PRODUCT_TAG } from "lib/constants";
-import { getProduct, getProductRecommendations } from "lib/dynamicweb";
+import { getProduct, getProductRecommendations, getUserPrice } from "lib/dynamicweb";
 import type { Image } from "lib/dynamicweb/types";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -55,6 +56,22 @@ export default async function ProductPage(props: {
 
   if (!product) return notFound();
 
+  // Price gating: when signed in, resolve the buyer's server-side (contract)
+  // price and override the anonymous list price. Product 10002 → 1399 (1748.75
+  // incl. VAT) for the demo buyer vs 1599 (1998.75 incl. VAT) anonymous.
+  const listPrice = product.priceRange.maxVariantPrice;
+  const userPrice = await getUserPrice(product.handle);
+  const gated =
+    userPrice && userPrice.withVat.amount !== listPrice.amount
+      ? userPrice.withVat
+      : undefined;
+  if (userPrice) {
+    product.priceRange = {
+      minVariantPrice: userPrice.withVat,
+      maxVariantPrice: userPrice.withVat,
+    };
+  }
+
   const productJsonLd = {
     "@context": "https://schema.org",
     "@type": "Product",
@@ -98,6 +115,19 @@ export default async function ProductPage(props: {
           </div>
 
           <div className="basis-full lg:basis-2/6">
+            {gated ? (
+              <div className="mb-4 rounded-md bg-green-50 px-3 py-2 text-sm text-green-800 dark:bg-green-900/30 dark:text-green-200">
+                <span className="font-medium">Your contract price</span> applies.
+                List price{" "}
+                <span className="line-through">
+                  <Price
+                    amount={listPrice.amount}
+                    currencyCode={listPrice.currencyCode}
+                  />
+                </span>
+                .
+              </div>
+            ) : null}
             <Suspense fallback={null}>
               <ProductDescription product={product} />
             </Suspense>
