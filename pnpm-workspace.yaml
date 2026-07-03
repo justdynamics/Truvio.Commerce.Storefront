@@ -1,0 +1,5 @@
+# pnpm allowlists native build scripts here (moved out of package.json in pnpm 10+).
+# sharp ships prebuilt libvips binaries; allowing its optional install script
+# makes `pnpm install` exit 0 instead of tripping the ignored-builds guard.
+allowBuilds:
+  sharp: true
