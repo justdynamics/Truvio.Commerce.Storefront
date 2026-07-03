@@ -8,23 +8,30 @@ import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import {
   DW_AREA_ID,
+  DW_COUNTRY_CODE,
   DW_LANGUAGE_ID,
   DW_MEDIA_BASE,
   DW_QUERY_NAME,
   DW_REPOSITORY_NAME,
+  DW_SHOP_ID,
   dwDelete,
   dwGet,
   dwPatch,
   dwPost,
   localeParams,
 } from "./dwapi";
+import { getEffectiveToken } from "./auth";
 import {
+  Address,
   Cart,
   CartItem,
   Collection,
+  Facet,
   Image,
   Menu,
   Money,
+  Order,
+  OrderLine,
   Page,
   Product,
   ProductOption,
@@ -366,12 +373,32 @@ const reshapeCart = (c: DwCart): Cart => {
   };
 };
 
+/**
+ * DW nav `link` values are backend paths (`/headless/*`) that 404 as Next routes.
+ * Translate them to storefront routes: catalog-ish nodes → `/search`, home → `/`,
+ * everything else → a single-segment content-page slug the `/[page]` route resolves
+ * via `/content/pages/url`. Heuristic but eliminates the cosmetic prefetch 404s.
+ */
+export const translateNavPath = (raw?: string): string => {
+  if (!raw || raw === "/") return "/";
+  let p = raw.trim();
+  if (/^https?:\/\//i.test(p)) return p; // external, leave as-is
+  p = p.replace(/^\/?headless\/?/i, "/");
+  if (!p.startsWith("/")) p = `/${p}`;
+  const lower = p.toLowerCase();
+  if (/(catalog|shop|products|store)/.test(lower)) return "/search";
+  if (lower === "/" || /(^\/home$|\/frontpage)/.test(lower)) return "/";
+  // keep only the last slug segment as a content page handle
+  const slug = p.split("/").filter(Boolean).pop() || "";
+  return slug ? `/${slug}` : "/";
+};
+
 const flattenNav = (nodes: DwNavNode[]): Menu[] =>
   (nodes || [])
     .filter((n) => n.showInMenu !== false && (n.link || n.friendlyUrl))
     .map((n) => ({
       title: n.name || "",
-      path: n.friendlyUrl || n.link || "/",
+      path: translateNavPath(n.friendlyUrl || n.link || "/"),
     }));
 
 // ---------------------------------------------------------------------------
@@ -504,6 +531,61 @@ export async function getProducts({
   return res.products.map(reshapeProductBase);
 }
 
+/**
+ * Faceted search for the PLP: returns products plus the Delivery-API facet groups
+ * (Group → GroupID, Price → PriceRange; Manufacturer is empty in this catalog).
+ * Selected facet values are echoed back with `selected: true` for the UI.
+ */
+export async function getProductsWithFacets({
+  query,
+  sortKey,
+  reverse,
+  groupId,
+  priceRange,
+}: {
+  query?: string;
+  sortKey?: string;
+  reverse?: boolean;
+  groupId?: string;
+  priceRange?: string;
+}): Promise<{ products: Product[]; facets: Facet[] }> {
+  const res = await dwGet<DwSearchResponse>(
+    "/dwapi/ecommerce/products/search",
+    {
+      RepositoryName: DW_REPOSITORY_NAME,
+      QueryName: DW_QUERY_NAME,
+      ...localeParams(),
+      PageSize: "100",
+      PageIndex: "1",
+      q: query,
+      GroupID: groupId,
+      PriceRange: priceRange,
+      ...sortParams(sortKey, reverse),
+    }
+  );
+  if (!res.ok || !res.body || !Array.isArray(res.body.products)) {
+    return { products: [], facets: [] };
+  }
+  const products = res.body.products.map(reshapeProductBase);
+  const facets: Facet[] = [];
+  for (const g of res.body.facetGroups || []) {
+    for (const f of g.facets || []) {
+      if (!f.options?.length) continue; // skip empty (e.g. Manufacturer)
+      facets.push({
+        name: f.name,
+        queryParameter: f.queryParameter,
+        options: f.options.map((o) => ({
+          label: o.label || o.name,
+          value: o.value,
+          count: o.count,
+          selected: o.selected,
+        })),
+      });
+    }
+  }
+  return { products, facets };
+}
+
 export async function getProductRecommendations(
   productId: string
 ): Promise<Product[]> {
@@ -627,19 +709,25 @@ export async function getPages(): Promise<Page[]> {
 // ---------------------------------------------------------------------------
 
 async function fetchCart(secret: string): Promise<Cart | undefined> {
+  // Carry the signed-in (or impersonatee) token so the cart binds to the user
+  // and user-scoped price/permission context applies.
+  const token = await getEffectiveToken();
   const res = await dwGet<DwCart>(
     `/dwapi/ecommerce/carts/${secret}`,
-    localeParams()
+    localeParams(),
+    token
   );
   if (!res.ok || !res.body?.secret) return undefined;
   return reshapeCart(res.body);
 }
 
 export async function createCart(): Promise<Cart> {
+  const token = await getEffectiveToken();
   const res = await dwPost<DwCart>(
     "/dwapi/ecommerce/carts/create",
     {},
-    localeParams()
+    localeParams(),
+    token
   );
   return reshapeCart(res.body || {});
 }
@@ -659,6 +747,7 @@ export async function addToCart(
 ): Promise<Cart> {
   const secret = (await cookies()).get("cartId")?.value;
   if (!secret) throw new Error("No cart");
+  const token = await getEffectiveToken();
 
   for (const line of lines) {
     const { productId, variantId } = decodeMerchandiseId(line.merchandiseId);
@@ -671,7 +760,8 @@ export async function addToCart(
         quantity: line.quantity,
         unitId: "",
       },
-      localeParams()
+      localeParams(),
+      token
     );
   }
   return (await fetchCart(secret))!;
@@ -682,6 +772,7 @@ export async function updateCart(
 ): Promise<Cart> {
   const secret = (await cookies()).get("cartId")?.value;
   if (!secret) throw new Error("No cart");
+  const token = await getEffectiveToken();
 
   for (const line of lines) {
     const { productId, variantId } = decodeMerchandiseId(line.merchandiseId);
@@ -694,7 +785,8 @@ export async function updateCart(
         quantity: line.quantity,
         unitId: "",
       },
-      localeParams()
+      localeParams(),
+      token
     );
   }
   return (await fetchCart(secret))!;
@@ -703,14 +795,238 @@ export async function updateCart(
 export async function removeFromCart(lineIds: string[]): Promise<Cart> {
   const secret = (await cookies()).get("cartId")?.value;
   if (!secret) throw new Error("No cart");
+  const token = await getEffectiveToken();
 
   for (const id of lineIds) {
     await dwDelete(
       `/dwapi/ecommerce/carts/${secret}/items/${id}`,
-      localeParams()
+      localeParams(),
+      token
     );
   }
   return (await fetchCart(secret))!;
+}
+
+// ---------------------------------------------------------------------------
+// B2B / customer center (user-scoped — effective JWT threaded through)
+// ---------------------------------------------------------------------------
+
+/**
+ * Per-user (contract) price for a product, resolved server-side by the buyer's
+ * JWT. Returns the Money to display when signed in, or null when anonymous / no
+ * override. This is the PDP/PLP price-gating proof: product 10002 resolves to the
+ * buyer's contract 1399 vs the anonymous list 1599.
+ */
+export async function getUserPrice(
+  handle: string
+): Promise<{ withVat: Money; withoutVat: Money } | undefined> {
+  const token = await getEffectiveToken();
+  if (!token) return undefined;
+  const res = await dwGet<DwSearchResponse>(
+    "/dwapi/ecommerce/products/search",
+    {
+      RepositoryName: DW_REPOSITORY_NAME,
+      QueryName: DW_QUERY_NAME,
+      ...localeParams(),
+      sku: handle,
+      PageSize: "1",
+    },
+    token
+  );
+  const p = res.ok ? res.body?.products?.[0] : undefined;
+  if (!p?.price) return undefined;
+  const cur = p.price.currencyCode;
+  return {
+    withVat: money(p.price.priceWithVat ?? p.price.price, cur),
+    withoutVat: money(p.price.priceWithoutVat ?? p.price.price, cur),
+  };
+}
+
+type DwOrderLineFull = DwOrderLine & {
+  productName?: string;
+  productNumber?: string;
+  unitPrice?: DwCartPrice;
+  totalPriceWithProductDiscounts?: DwCartPrice;
+};
+type DwOrder = {
+  id?: string;
+  secret?: string;
+  createdAt?: string;
+  completed?: boolean;
+  stateName?: string;
+  customerName?: string;
+  customerEmail?: string;
+  price?: DwCartPrice;
+  orderLines?: DwOrderLineFull[];
+};
+
+const reshapeOrderLine = (l: DwOrderLineFull): OrderLine => ({
+  id: l.id || "",
+  productId: l.productId || "",
+  productNumber: l.productNumber || l.productId || "",
+  productName: l.productName || "",
+  quantity: l.quantity ?? 0,
+  unitPrice: money(l.unitPrice?.price ?? 0, l.unitPrice?.currencyCode),
+  totalPrice: money(
+    l.totalPriceWithProductDiscounts?.price ?? l.price?.price ?? 0,
+    (l.totalPriceWithProductDiscounts ?? l.price)?.currencyCode
+  ),
+});
+
+const reshapeOrder = (o: DwOrder): Order => {
+  const lines = (o.orderLines || []).map(reshapeOrderLine);
+  return {
+    id: o.id || "",
+    secret: o.secret || "",
+    createdAt: o.createdAt || "",
+    completed: Boolean(o.completed),
+    stateName: o.stateName || "",
+    total: money(o.price?.price ?? 0, o.price?.currencyCode),
+    customerName: o.customerName || "",
+    customerEmail: o.customerEmail || "",
+    lineCount: lines.length,
+    lines,
+  };
+};
+
+/** Order history for the signed-in (or impersonated) user. */
+export async function getOrders(): Promise<Order[]> {
+  const token = await getEffectiveToken();
+  if (!token) return [];
+  const res = await dwGet<{ orders?: DwOrder[] }>(
+    "/dwapi/ecommerce/orders",
+    { ShopId: DW_SHOP_ID },
+    token
+  );
+  if (!res.ok || !Array.isArray(res.body?.orders)) return [];
+  return res.body!.orders!.map(reshapeOrder);
+}
+
+/** Single order by its `secret` (the detail key, NOT the display id). */
+export async function getOrder(secret: string): Promise<Order | undefined> {
+  const token = await getEffectiveToken();
+  if (!token) return undefined;
+  const res = await dwGet<DwOrder>(
+    `/dwapi/ecommerce/orders/${encodeURIComponent(secret)}`,
+    { ShopId: DW_SHOP_ID },
+    token
+  );
+  if (!res.ok || !res.body || typeof res.body !== "object" || !res.body.id) {
+    return undefined;
+  }
+  return reshapeOrder(res.body);
+}
+
+/**
+ * Reorder: copy an order's lines into the active cart (creating one if needed).
+ * Mirrors Swift's reorder / addmulti behavior over the headless cart mutations.
+ */
+export async function reorder(orderSecret: string): Promise<Cart | undefined> {
+  const order = await getOrder(orderSecret);
+  if (!order) return undefined;
+  let secret = (await cookies()).get("cartId")?.value;
+  if (!secret) {
+    const created = await createCart();
+    secret = created.id;
+    if (secret) (await cookies()).set("cartId", secret);
+  }
+  if (!secret) return undefined;
+  const token = await getEffectiveToken();
+  for (const l of order.lines) {
+    if (!l.productId || l.quantity <= 0) continue;
+    await dwPost(
+      `/dwapi/ecommerce/carts/${secret}/items`,
+      {
+        productId: l.productId,
+        productVariantId: "",
+        productLanguageId: DW_LANGUAGE_ID,
+        quantity: l.quantity,
+        unitId: "",
+      },
+      localeParams(),
+      token
+    );
+  }
+  return fetchCart(secret);
+}
+
+/** Delivery + billing addresses for the signed-in user. */
+export async function getAddresses(): Promise<Address[]> {
+  const token = await getEffectiveToken();
+  if (!token) return [];
+  const res = await dwGet<Array<Record<string, string | number | boolean>>>(
+    "/dwapi/users/addresses/all",
+    undefined,
+    token
+  );
+  if (!res.ok || !Array.isArray(res.body)) return [];
+  return res.body.map((a) => ({
+    id: String(a.id ?? ""),
+    name: String(a.name ?? a.company ?? ""),
+    address: String(a.address ?? ""),
+    address2: String(a.address2 ?? ""),
+    zip: String(a.zip ?? ""),
+    city: String(a.city ?? ""),
+    country: String(a.country ?? ""),
+    countryCode: String(a.countryCode ?? ""),
+    isBilling: Boolean(a.isBilling),
+    isShipping: Boolean(a.isShipping),
+  }));
+}
+
+export type CheckoutInput = {
+  name: string;
+  email: string;
+  address: string;
+  zip: string;
+  city: string;
+  country?: string;
+};
+
+/**
+ * Place the active cart as a DW order. Stamps the shipping/customer details onto
+ * the cart, then POSTs createOrder. Returns the real DW order id + secret for the
+ * confirmation page. Requires a signed-in session (cart binds to the user).
+ */
+export async function placeOrder(
+  input: CheckoutInput
+): Promise<{ id: string; secret: string } | { error: string }> {
+  const secret = (await cookies()).get("cartId")?.value;
+  if (!secret) return { error: "Your cart is empty." };
+  const token = await getEffectiveToken();
+  if (!token) return { error: "Please sign in to place an order." };
+
+  // Stamp customer/delivery details onto the cart (PATCH is tolerant of partials).
+  await dwPatch(
+    `/dwapi/ecommerce/carts/${secret}`,
+    {
+      customerName: input.name,
+      customerEmail: input.email,
+      customerAddress: input.address,
+      customerZip: input.zip,
+      customerCity: input.city,
+      customerCountry: input.country || DW_COUNTRY_CODE,
+      deliveryName: input.name,
+      deliveryAddress: input.address,
+      deliveryZip: input.zip,
+      deliveryCity: input.city,
+    },
+    localeParams(),
+    token
+  );
+
+  const res = await dwPost<DwOrder>(
+    `/dwapi/ecommerce/carts/${secret}/createOrder`,
+    {},
+    localeParams(),
+    token
+  );
+  if (!res.ok || !res.body?.id) {
+    return { error: "Order could not be placed. Please try again." };
+  }
+  // The placed cart is consumed; drop the cart cookie so a fresh cart starts.
+  (await cookies()).delete("cartId");
+  return { id: res.body.id, secret: res.body.secret || secret };
 }
 
 // ---------------------------------------------------------------------------

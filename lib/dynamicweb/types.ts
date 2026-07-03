@@ -131,3 +131,54 @@ export type Cart = {
   lines: CartItem[];
   totalQuantity: number;
 };
+
+// --- B2B / customer-center domain types (DW user-scoped Delivery API) --------
+
+export type OrderLine = {
+  id: string;
+  productId: string;
+  productNumber: string;
+  productName: string;
+  quantity: number;
+  unitPrice: Money;
+  totalPrice: Money;
+};
+
+export type Order = {
+  id: string;
+  secret: string;
+  createdAt: string;
+  completed: boolean;
+  stateName: string;
+  total: Money;
+  customerName: string;
+  customerEmail: string;
+  lineCount: number;
+  lines: OrderLine[];
+};
+
+export type FacetOption = {
+  label: string;
+  value: string;
+  count: number;
+  selected: boolean;
+};
+
+export type Facet = {
+  name: string;
+  queryParameter: string;
+  options: FacetOption[];
+};
+
+export type Address = {
+  id: string;
+  name: string;
+  address: string;
+  address2: string;
+  zip: string;
+  city: string;
+  country: string;
+  countryCode: string;
+  isBilling: boolean;
+  isShipping: boolean;
+};
