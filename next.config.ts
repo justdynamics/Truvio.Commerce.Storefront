@@ -1,3 +1,8 @@
+// Derive the DW media host (product images serve from `<host>/Files/...`) from
+// DW_API_BASE so next/image accepts them on any demo backend, not a pinned port.
+const dwApiBase = process.env.DW_API_BASE || "https://localhost:58039";
+const dwUrl = new URL(dwApiBase);
+
 export default {
   experimental: {
     ppr: true,
@@ -9,9 +14,9 @@ export default {
     remotePatterns: [
       // DynamicWeb media host — product images/files serve from `/Files/...`.
       {
-        protocol: "https",
-        hostname: "localhost",
-        port: "57301",
+        protocol: dwUrl.protocol.replace(":", "") as "http" | "https",
+        hostname: dwUrl.hostname,
+        port: dwUrl.port,
         pathname: "/Files/**",
       },
     ],
