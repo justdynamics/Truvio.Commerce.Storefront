@@ -1,4 +1,4 @@
-import { getCollections, getPages, getProducts } from "lib/shopify";
+import { getCollections, getPages, getProducts } from "lib/dynamicweb";
 import { baseUrl, validateEnvironmentVariables } from "lib/utils";
 import { MetadataRoute } from "next";
 

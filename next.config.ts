@@ -7,10 +7,12 @@ export default {
   images: {
     formats: ["image/avif", "image/webp"],
     remotePatterns: [
+      // DynamicWeb media host — product images/files serve from `/Files/...`.
       {
         protocol: "https",
-        hostname: "cdn.shopify.com",
-        pathname: "/s/files/**",
+        hostname: "localhost",
+        port: "57301",
+        pathname: "/Files/**",
       },
     ],
   },
