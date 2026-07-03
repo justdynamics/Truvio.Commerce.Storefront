@@ -96,8 +96,9 @@ export async function updateItemQuantity(
 }
 
 export async function redirectToCheckout() {
-  let cart = await getCart();
-  redirect(cart!.checkoutUrl);
+  // Headless checkout page (shipping + place order via createOrder). Requires
+  // sign-in; the checkout page redirects anonymous users to /login.
+  redirect("/checkout");
 }
 
 export async function createCartAndSetCookie() {
