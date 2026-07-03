@@ -50,6 +50,10 @@ type DwFetchOpts = {
   method?: string;
   params?: Record<string, string | undefined>;
   body?: unknown;
+  // Bearer JWT for user-scoped endpoints (orders, addresses, per-user pricing,
+  // impersonation). Anonymous calls omit it. NEVER cache a token-bearing response
+  // in the shared ("use cache") layer — user scope must stay request-private.
+  token?: string;
   // Next.js caching hints passed through to fetch.
   cache?: RequestCache;
   revalidate?: number;
@@ -59,12 +63,15 @@ export async function dwFetch<T>(
   path: string,
   opts: DwFetchOpts = {}
 ): Promise<{ status: number; ok: boolean; body: T }> {
-  const { method = "GET", params, body, cache, revalidate } = opts;
+  const { method = "GET", params, body, token, cache, revalidate } = opts;
   const url = buildUrl(path, params);
+
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
 
   const init: RequestInit & { next?: { revalidate?: number } } = {
     method,
-    headers: { "Content-Type": "application/json" },
+    headers,
   };
   if (body !== undefined) init.body = JSON.stringify(body);
   if (cache) init.cache = cache;
@@ -85,22 +92,26 @@ export async function dwFetch<T>(
 
 export const dwGet = <T>(
   path: string,
-  params?: Record<string, string | undefined>
-) => dwFetch<T>(path, { method: "GET", params });
+  params?: Record<string, string | undefined>,
+  token?: string
+) => dwFetch<T>(path, { method: "GET", params, token });
 
 export const dwPost = <T>(
   path: string,
   body?: unknown,
-  params?: Record<string, string | undefined>
-) => dwFetch<T>(path, { method: "POST", body, params });
+  params?: Record<string, string | undefined>,
+  token?: string
+) => dwFetch<T>(path, { method: "POST", body, params, token });
 
 export const dwPatch = <T>(
   path: string,
   body?: unknown,
-  params?: Record<string, string | undefined>
-) => dwFetch<T>(path, { method: "PATCH", body, params });
+  params?: Record<string, string | undefined>,
+  token?: string
+) => dwFetch<T>(path, { method: "PATCH", body, params, token });
 
 export const dwDelete = <T>(
   path: string,
-  params?: Record<string, string | undefined>
-) => dwFetch<T>(path, { method: "DELETE", params });
+  params?: Record<string, string | undefined>,
+  token?: string
+) => dwFetch<T>(path, { method: "DELETE", params, token });

@@ -1,3 +1,4 @@
+import { AccountNav } from "components/auth/account-nav";
 import CartModal from "components/cart/modal";
 import LogoSquare from "components/logo-square";
 import { getMenu } from "lib/dynamicweb";
@@ -52,8 +53,11 @@ export async function Navbar() {
             <Search />
           </Suspense>
         </div>
-        <div className="flex justify-end md:w-1/3">
+        <div className="flex items-center justify-end md:w-1/3">
           <CartModal />
+          <Suspense fallback={null}>
+            <AccountNav />
+          </Suspense>
         </div>
       </div>
     </nav>
