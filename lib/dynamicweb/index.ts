@@ -241,7 +241,8 @@ const reshapeVariantTree = (
   productId: string,
   productActive: boolean,
   productPriceModel: DwPrice | undefined,
-  groups: DwVariantNode[]
+  groups: DwVariantNode[],
+  topGroupName: string
 ): { options: ProductOption[]; variants: ProductVariant[] } => {
   const optionMap = new Map<string, Set<string>>();
   const variants: ProductVariant[] = [];
@@ -282,9 +283,9 @@ const reshapeVariantTree = (
     }
   };
 
-  // `groups` is the top-level list of first-dimension options; each carries the
-  // first group's name on `variantInfoGroupName`.
-  const topGroupName = groups[0]?.variantInfoGroupName || "";
+  // `groups` is the top-level list of first-dimension options; their shared
+  // group name is the root's `variantInfoGroupName` (passed in as topGroupName),
+  // NOT groups[0]'s (which points at the SECOND dimension's group).
   for (const g of groups) walk(g, topGroupName, [], []);
 
   const options: ProductOption[] = [...optionMap.entries()].map(
@@ -492,12 +493,21 @@ export async function getProduct(handle: string): Promise<Product | undefined> {
   if (variantsRes.ok && variantsRes.body) {
     const raw = variantsRes.body;
     const groups = Array.isArray(raw) ? raw : raw.variantInfo || [];
+    // The DW tree root carries the FIRST dimension's group name on its own
+    // `variantInfoGroupName` ("Roast"); each child node's `variantInfoGroupName`
+    // names its CHILDREN's group. So the top group name is the root's, not
+    // groups[0]'s (which is the child pointer) — passing groups[0]'s collapses
+    // dimension 1 into dimension 2 on 3-axis products.
+    const rootGroupName = Array.isArray(raw)
+      ? raw[0]?.variantInfoGroupName || ""
+      : raw.variantInfoGroupName || "";
     if (groups.length) {
       const { options, variants } = reshapeVariantTree(
         dw.id,
         base.availableForSale,
         dw.price,
-        groups
+        groups,
+        rootGroupName
       );
       if (variants.length) {
         base.options = options;
