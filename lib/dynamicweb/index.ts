@@ -540,14 +540,16 @@ export async function getProductsWithFacets({
   query,
   sortKey,
   reverse,
-  groupId,
-  priceRange,
+  facetParams,
 }: {
   query?: string;
   sortKey?: string;
   reverse?: boolean;
-  groupId?: string;
-  priceRange?: string;
+  // Any Delivery-API facet query parameter → value, forwarded verbatim to the
+  // search endpoint. The repository's Products.query decides which are honoured
+  // (e.g. GroupID, PriceRange, Roast, Origin, Grind, Brand). Kept generic so a
+  // backend with different custom facets needs no provider change.
+  facetParams?: Record<string, string | undefined>;
 }): Promise<{ products: Product[]; facets: Facet[] }> {
   const res = await dwGet<DwSearchResponse>(
     "/dwapi/ecommerce/products/search",
@@ -558,8 +560,7 @@ export async function getProductsWithFacets({
       PageSize: "100",
       PageIndex: "1",
       q: query,
-      GroupID: groupId,
-      PriceRange: priceRange,
+      ...(facetParams || {}),
       ...sortParams(sortKey, reverse),
     }
   );

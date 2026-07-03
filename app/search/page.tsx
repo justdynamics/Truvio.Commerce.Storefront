@@ -13,21 +13,23 @@ export default async function SearchPage(props: {
   searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const searchParams = await props.searchParams;
-  const {
-    sort,
-    q: searchValue,
-    GroupID,
-    PriceRange,
-  } = searchParams as { [key: string]: string };
+  const { sort, q: searchValue } = searchParams as { [key: string]: string };
   const { sortKey, reverse } =
     sorting.find((item) => item.slug === sort) || defaultSort;
+
+  // Everything except the reserved sort/q keys is a facet query parameter
+  // (GroupID, PriceRange, Roast, Origin, Grind, Brand, …) forwarded verbatim.
+  const RESERVED = new Set(["sort", "q"]);
+  const facetParams: Record<string, string> = {};
+  for (const [k, v] of Object.entries(searchParams || {})) {
+    if (!RESERVED.has(k) && typeof v === "string") facetParams[k] = v;
+  }
 
   const { products, facets } = await getProductsWithFacets({
     query: searchValue,
     sortKey,
     reverse,
-    groupId: GroupID,
-    priceRange: PriceRange,
+    facetParams,
   });
   const resultsText = products.length > 1 ? "results" : "result";
 
