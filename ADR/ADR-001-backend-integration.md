@@ -154,3 +154,80 @@ model incl. price block); `GET /dwapi/ecommerce/products/search?ProductIds=10001
 200 `ProductListViewModel` (5 products, `totalProductsCount`); `GET /dwapi/ecommerce/groups`
 → 200 (31 collections); `GET /dwapi/frontend/navigations/3`, `GET /dwapi/content/pages?AreaId=3`
 (99 pages), `GET /dwapi/content/areas` (3 areas) all 200.
+
+## Implementation notes (U4 — provider build, wave 2)
+
+The `lib/dynamicweb/` provider was implemented and proven live against the harness host
+(Swift 2.3, `Headless` repository, `ENU`/`SHOP1`). Shapes that diverged from the sketch above,
+and the workarounds adopted, are recorded here so the mapping is reproducible.
+
+### Product list / search — the `POST` model stays unusable; `GET /search` is canonical
+`POST /dwapi/ecommerce/products` returns **400 for every probed body** (confirmed again). The
+provider uses **`GET /dwapi/ecommerce/products/search`** exclusively, with
+`RepositoryName=Headless&QueryName=Products` + `LanguageId`/`ShopId`/`CurrencyCode`/`CountryCode`.
+Verified live params: `q` (text), `sku` (reverse-resolve a product number → id, 1 hit),
+`GroupID` (collection PLP), `PageSize`/`PageIndex`, and `SortBy`+`SortOrder`
+(`SortBy=Price|Created|Name`, `SortOrder=asc|desc` all sort correctly). Count path
+`totalProductsCount` (378 under ENU/SHOP1). Facet options live at
+`facetGroups[i].facets[j].options[]` as `{name,label,value,count,selected}`.
+
+### Slug contract — resolve via search, reshape the hit directly
+Search result items carry the **same rich view-model as product detail** (price, `variantInfo`,
+`groups`), so `getProduct(handle)` does `search({sku:handle})` and reshapes `products[0]` with no
+second detail call; a direct `GET /products/{handle}` is only a fallback. Handle = product
+`number` per the baseline slug contract.
+
+### Variants — nested tree, flattened by a recursive walk
+`GET /dwapi/ecommerce/variants/{productId}` returns a **nested** structure: each level is a
+variant group (`variantInfoGroupName`, e.g. "Colors" → "Shoe size") whose `variantInfo[]` are the
+options, each carrying its own child `variantInfo[]`. The provider walks it into flat Vercel
+`options[]` (group → distinct values) + `variants[]` (leaf combinations). Leaf variant id = the
+DW option ids joined with `.` (matches the `variantId` shape in search, e.g. `VO3.VO49`).
+Merchandise ids are encoded `productId` (simple) or `productId::variantId` (variant) and decoded
+on cart writes. Proven: `PROD340` renders "Colors" + "Shoe size" with Red/Blue/Black/Green.
+
+### Cart — full `OrderLineViewModel` required; locale params mandatory on every call
+- **Create** (`POST /carts/create`) requires `LanguageId`, `ShopId`, `CurrencyCode`, **and
+  `CountryCode`** as query params (a bare call 400s listing all four). Returns the cart `secret`
+  (stored in the `cartId` cookie).
+- **Add** (`POST /carts/{secret}/items`) requires the **full `OrderLineViewModel`** — a minimal
+  `{productId,quantity}` body returns **404 "Items not found."**. The working body is
+  `{productId, productVariantId:"", productLanguageId:"<lang>", quantity, unitId:""}`; the
+  discriminating field is **`productLanguageId`**. `PATCH /items` (array form) returns 200 with a
+  per-line `{success:false,error:"Item not found"}` for the wrong shape.
+- **Update** (`PATCH /carts/{secret}/items/{lineId}`) and **remove**
+  (`DELETE /carts/{secret}/items/{lineId}`) both take the line `id` (e.g. `OL2`) and return 200.
+- Cart prices are **VAT-inclusive** in the cart context (`showPricesWithVat:true`), unlike the
+  anonymous product detail (`false`). The provider uses the cart's own `price`/`totalTaxes`.
+
+### Checkout — handoff-only
+No hosted headless checkout page exists in the baseline. `checkoutUrl` is set to the reachable
+`…/carts/{secret}/checkout` Delivery-API endpoint (exists; 400 without a checkout payload). The
+storefront hands off; completing a DW order (`/carts/{secret}/createOrder`) + a checkout UI is
+deferred to wave 3.
+
+### Images — none in the catalog
+All 378 products return **empty** `imagePatternImages`/`assetCategories`. The provider maps real
+DW media to `/Files/**` on the host (allowed in `next.config.ts` `remotePatterns`) when present,
+but falls back to a same-origin `/placeholder.svg` — which is what renders today.
+
+### Menu — backend link paths
+`GET /dwapi/frontend/navigations/{areaId}` (area 5 = `Headless`) returns recursive `nodes[]` with
+`name` (title) + `link` (path). Links are DW backend paths (`/headless/*`); Next prefetch 404s on
+them (cosmetic). A DW-path → storefront-route translation is a wave-3 item.
+
+### Revalidation & Vercel couplings
+The Shopify webhook route was re-pointed to `lib/dynamicweb.revalidate` (guarded by
+`DW_REVALIDATION_SECRET`, tag-revalidates content); freshness otherwise rides time-based
+`cacheLife` on each provider fn. No `@vercel/*` runtime deps were present in the scaffolded
+`package.json`, so none needed removal — only `lib/shopify/**` + `SHOPIFY_*` env were removed.
+
+### TLS
+Self-signed dev host only: the provider sets `NODE_TLS_REJECT_UNAUTHORIZED=0` at module load when
+`DW_ALLOW_SELF_SIGNED=1` (and it is exported when running dev/build/start). Never for production.
+
+### Dev-server caveat (not a provider bug)
+`next dev --turbopack` 500s on PLP/PDP with a Tailwind v4 CSS parse error — the Turbopack CSS
+scanner mis-reads product-content strings in the RSC stream as arbitrary class names. The
+**production build** (source-only scanner) is unaffected: `next build` passes and `next start`
+serves every surface. Live parity was proven against `next start`.
