@@ -721,9 +721,13 @@ export async function getMenu(handle: string): Promise<Menu[]> {
   cacheTag(TAGS.collections);
   cacheLife("hours");
 
+  // ExpandMode=All returns the FULL nested tree. Without it, the endpoint only
+  // returns the active branch (top-level pages), so the "Header Menu"/"Footer
+  // Menu" containers (level 2) and their items (level 3) are absent and the
+  // menu renders empty.
   const res = await dwGet<{ nodes?: DwNavNode[] }>(
     `/dwapi/frontend/navigations/${DW_AREA_ID}`,
-    { LanguageId: DW_LANGUAGE_ID }
+    { LanguageId: DW_LANGUAGE_ID, ExpandMode: "All" }
   );
   if (!res.ok || !res.body?.nodes) return [];
   // The header/footer components pass Shopify-era handles; map them to the DW
@@ -741,17 +745,24 @@ export async function getPage(handle: string): Promise<Page> {
   let id: number | undefined;
   const nav = await dwGet<{ nodes?: DwNavNode[] }>(
     `/dwapi/frontend/navigations/${DW_AREA_ID}`,
-    { LanguageId: DW_LANGUAGE_ID }
+    { LanguageId: DW_LANGUAGE_ID, ExpandMode: "All" }
   );
   if (nav.ok && nav.body?.nodes) {
     const slug = handle.toLowerCase();
-    const hit = nav.body.nodes.find((n) => {
-      const p = (n.friendlyUrl || n.link || "")
-        .toLowerCase()
-        .replace(/\/+$/, "");
-      return p === `/${slug}` || p.endsWith(`/${slug}`);
-    });
-    id = hit?.pageId;
+    // The tree is nested (ExpandMode=All); walk it so pages below the top level
+    // (menu items, catalog sub-pages) resolve by their handle too.
+    const findInTree = (nodes: DwNavNode[]): DwNavNode | undefined => {
+      for (const n of nodes) {
+        const p = (n.friendlyUrl || n.link || "")
+          .toLowerCase()
+          .replace(/\/+$/, "");
+        if (p === `/${slug}` || p.endsWith(`/${slug}`)) return n;
+        const nested = n.nodes && findInTree(n.nodes);
+        if (nested) return nested;
+      }
+      return undefined;
+    };
+    id = findInTree(nav.body.nodes)?.pageId;
   }
   let b:
     | { id?: number; name?: string; title?: string; description?: string }
