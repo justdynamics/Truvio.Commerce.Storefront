@@ -619,7 +619,9 @@ export async function getProductsWithFacets({
   if (!res.ok || !res.body || !Array.isArray(res.body.products)) {
     return { products: [], facets: [] };
   }
-  const products = res.body.products.map(reshapeProductBase);
+  const products = res.body.products
+    .filter(hasProductImage)
+    .map(reshapeProductBase);
   const facets: Facet[] = [];
   for (const g of res.body.facetGroups || []) {
     for (const f of g.facets || []) {
