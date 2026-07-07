@@ -212,6 +212,14 @@ const productImages = (p: DwProduct): Image[] => {
   }));
 };
 
+// A product "has an image" if it carries a real image in the fields the display
+// reads (imagePatternImages / assetCategories) — i.e. it wouldn't fall back to the
+// placeholder. The Delivery API's `defaultImage` is not used for display and points
+// at nopic.png for imageless products, so it isn't the display-accurate signal.
+const hasProductImage = (p: DwProduct): boolean =>
+  (p.imagePatternImages || []).some((i) => i?.value) ||
+  (p.assetCategories || []).some((c) => (c?.assets || []).some((a) => a?.value));
+
 // ---------------------------------------------------------------------------
 // Reshapers
 // ---------------------------------------------------------------------------
@@ -487,7 +495,11 @@ async function searchProducts(params: {
       facetGroups: [],
     };
   }
-  return res.body;
+  // Hide products with no real image (they would render the placeholder). The
+  // Headless index can't filter these server-side (image presence is resolved at
+  // Delivery-API read time from disk file-existence), so filter here.
+  const products = res.body.products.filter(hasProductImage);
+  return { ...res.body, products };
 }
 
 // ---------------------------------------------------------------------------
