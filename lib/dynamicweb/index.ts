@@ -118,7 +118,11 @@ type DwVariantNode = {
   variantInfo?: DwVariantNode[];
 };
 
-type DwCartPrice = { price?: number; priceFormatted?: string; currencyCode?: string };
+type DwCartPrice = {
+  price?: number;
+  priceFormatted?: string;
+  currencyCode?: string;
+};
 type DwOrderLine = {
   id?: string;
   productId?: string;
@@ -170,14 +174,17 @@ const encodeMerchandiseId = (productId: string, variantId?: string): string =>
   variantId ? `${productId}${MERCH_SEP}${variantId}` : productId;
 
 const decodeMerchandiseId = (
-  merchandiseId: string
+  merchandiseId: string,
 ): { productId: string; variantId: string } => {
   const parts = merchandiseId.split(MERCH_SEP);
   return { productId: parts[0] ?? "", variantId: parts[1] ?? "" };
 };
 
 const stripHtml = (html?: string): string =>
-  (html || "").replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
+  (html || "")
+    .replace(/<[^>]*>/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 
 const money = (amount: number | undefined, currency?: string): Money => ({
   amount: (amount ?? 0).toString(),
@@ -218,7 +225,9 @@ const productImages = (p: DwProduct): Image[] => {
 // at nopic.png for imageless products, so it isn't the display-accurate signal.
 const hasProductImage = (p: DwProduct): boolean =>
   (p.imagePatternImages || []).some((i) => i?.value) ||
-  (p.assetCategories || []).some((c) => (c?.assets || []).some((a) => a?.value));
+  (p.assetCategories || []).some((c) =>
+    (c?.assets || []).some((a) => a?.value),
+  );
 
 // ---------------------------------------------------------------------------
 // Reshapers
@@ -252,7 +261,7 @@ const reshapeVariantTree = (
   productActive: boolean,
   productPriceModel: DwPrice | undefined,
   groups: DwVariantNode[],
-  topGroupName: string
+  topGroupName: string,
 ): { options: ProductOption[]; variants: ProductVariant[] } => {
   const optionMap = new Map<string, Set<string>>();
   const variants: ProductVariant[] = [];
@@ -261,7 +270,7 @@ const reshapeVariantTree = (
     node: DwVariantNode,
     groupName: string,
     selected: { name: string; value: string }[],
-    ids: string[]
+    ids: string[],
   ) => {
     const value = node.optionName || node.optionID || node.variantID || "";
     const optId = node.optionID || node.variantID || value;
@@ -277,7 +286,8 @@ const reshapeVariantTree = (
     const childGroupName = node.variantInfoGroupName || "";
     const children = node.variantInfo || [];
     if (children.length) {
-      for (const child of children) walk(child, childGroupName, nextSelected, nextIds);
+      for (const child of children)
+        walk(child, childGroupName, nextSelected, nextIds);
     } else {
       // leaf
       variants.push({
@@ -303,7 +313,7 @@ const reshapeVariantTree = (
       id: `opt-${i}-${name}`,
       name,
       values: [...values],
-    })
+    }),
   );
 
   return { options, variants };
@@ -326,7 +336,10 @@ const reshapeProductBase = (p: DwProduct): Product => {
     featuredImage: images[0] || PLACEHOLDER_IMAGE,
     images,
     seo: productSeo(p),
-    tags: (p.keywords || "").split(",").map((t) => t.trim()).filter(Boolean),
+    tags: (p.keywords || "")
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean),
     updatedAt: p.updated || new Date().toISOString(),
   };
 };
@@ -401,6 +414,12 @@ export const translateNavPath = (raw?: string): string => {
   if (lower === "/" || /(^\/home$|\/frontpage)/.test(lower)) return "/";
   // keep only the last slug segment as a content page handle
   const slug = p.split("/").filter(Boolean).pop() || "";
+  // The header/footer menu items were authored with a "-menu" suffix to avoid
+  // slug-colliding with the real content pages (About menu item = "about-menu",
+  // the About content page = "about"). Map the menu-item alias to its canonical
+  // content route so "About" lands on the real About page, not the empty stub.
+  const NAV_ALIASES: Record<string, string> = { "about-menu": "/about" };
+  if (NAV_ALIASES[slug]) return NAV_ALIASES[slug];
   return slug ? `/${slug}` : "/";
 };
 
@@ -421,7 +440,7 @@ const flattenNav = (nodes: DwNavNode[]): Menu[] =>
 //   - flat pre-order list: items follow the container with `level` = parent+1
 const navChildrenOf = (
   nodes: DwNavNode[],
-  containerName: string
+  containerName: string,
 ): DwNavNode[] => {
   const want = containerName.trim().toLowerCase();
 
@@ -462,7 +481,7 @@ const navChildrenOf = (
 
 const sortParams = (
   sortKey?: string,
-  reverse?: boolean
+  reverse?: boolean,
 ): Record<string, string> => {
   const order = reverse ? "desc" : "asc";
   switch (sortKey) {
@@ -499,7 +518,7 @@ async function searchProducts(params: {
   };
   const res = await dwGet<DwSearchResponse>(
     "/dwapi/ecommerce/products/search",
-    query
+    query,
   );
   if (!res.ok || !res.body || !Array.isArray(res.body.products)) {
     return {
@@ -535,7 +554,7 @@ export async function getProduct(handle: string): Promise<Product | undefined> {
     // Fallback: some products' number == id, try direct detail.
     const detail = await dwGet<DwProduct>(
       `/dwapi/ecommerce/products/${encodeURIComponent(handle)}`,
-      localeParams()
+      localeParams(),
     );
     if (detail.ok && detail.body?.id) dw = detail.body;
   }
@@ -546,7 +565,7 @@ export async function getProduct(handle: string): Promise<Product | undefined> {
   // Expand the variant matrix (best-effort; single default variant otherwise).
   const variantsRes = await dwGet<DwVariantNode | DwVariantNode[]>(
     `/dwapi/ecommerce/variants/${encodeURIComponent(dw.id)}`,
-    localeParams()
+    localeParams(),
   );
   if (variantsRes.ok && variantsRes.body) {
     const raw = variantsRes.body;
@@ -565,7 +584,7 @@ export async function getProduct(handle: string): Promise<Product | undefined> {
         base.availableForSale,
         dw.price,
         groups,
-        rootGroupName
+        rootGroupName,
       );
       if (variants.length) {
         base.options = options;
@@ -630,7 +649,7 @@ export async function getProductsWithFacets({
       q: query,
       ...(facetParams || {}),
       ...sortParams(sortKey, reverse),
-    }
+    },
   );
   if (!res.ok || !res.body || !Array.isArray(res.body.products)) {
     return { products: [], facets: [] };
@@ -658,7 +677,7 @@ export async function getProductsWithFacets({
 }
 
 export async function getProductRecommendations(
-  productId: string
+  productId: string,
 ): Promise<Product[]> {
   "use cache";
   cacheTag(TAGS.products);
@@ -666,14 +685,14 @@ export async function getProductRecommendations(
 
   const res = await dwGet<DwProduct[]>(
     `/dwapi/ecommerce/products/${encodeURIComponent(productId)}/related`,
-    localeParams()
+    localeParams(),
   );
   if (!res.ok || !Array.isArray(res.body)) return [];
   return res.body.map(reshapeProductBase);
 }
 
 export async function getCollection(
-  handle: string
+  handle: string,
 ): Promise<Collection | undefined> {
   "use cache";
   cacheTag(TAGS.collections);
@@ -681,7 +700,7 @@ export async function getCollection(
 
   const res = await dwGet<DwGroup>(
     `/dwapi/ecommerce/groups/${encodeURIComponent(handle)}`,
-    localeParams()
+    localeParams(),
   );
   if (!res.ok || !res.body?.id) return undefined;
   return reshapeCollection(res.body);
@@ -743,7 +762,7 @@ export async function getMenu(handle: string): Promise<Menu[]> {
   // menu renders empty.
   const res = await dwGet<{ nodes?: DwNavNode[] }>(
     `/dwapi/frontend/navigations/${DW_AREA_ID}`,
-    { LanguageId: DW_LANGUAGE_ID, ExpandMode: "All" }
+    { LanguageId: DW_LANGUAGE_ID, ExpandMode: "All" },
   );
   if (!res.ok || !res.body?.nodes) return [];
   // The header/footer components pass Shopify-era handles; map them to the DW
@@ -761,7 +780,7 @@ export async function getPage(handle: string): Promise<Page> {
   let id: number | undefined;
   const nav = await dwGet<{ nodes?: DwNavNode[] }>(
     `/dwapi/frontend/navigations/${DW_AREA_ID}`,
-    { LanguageId: DW_LANGUAGE_ID, ExpandMode: "All" }
+    { LanguageId: DW_LANGUAGE_ID, ExpandMode: "All" },
   );
   if (nav.ok && nav.body?.nodes) {
     const slug = handle.toLowerCase();
@@ -798,7 +817,10 @@ export async function getPage(handle: string): Promise<Page> {
     handle,
     body: b?.description || "",
     bodySummary: b?.description || "",
-    seo: { title: b?.title || b?.name || handle, description: b?.description || "" },
+    seo: {
+      title: b?.title || b?.name || handle,
+      description: b?.description || "",
+    },
     createdAt: now,
     updatedAt: now,
   };
@@ -820,7 +842,7 @@ async function fetchCart(secret: string): Promise<Cart | undefined> {
   const res = await dwGet<DwCart>(
     `/dwapi/ecommerce/carts/${secret}`,
     localeParams(),
-    token
+    token,
   );
   if (!res.ok || !res.body?.secret) return undefined;
   return reshapeCart(res.body);
@@ -832,7 +854,7 @@ export async function createCart(): Promise<Cart> {
     "/dwapi/ecommerce/carts/create",
     {},
     localeParams(),
-    token
+    token,
   );
   return reshapeCart(res.body || {});
 }
@@ -848,7 +870,7 @@ export async function getCart(): Promise<Cart | undefined> {
 }
 
 export async function addToCart(
-  lines: { merchandiseId: string; quantity: number }[]
+  lines: { merchandiseId: string; quantity: number }[],
 ): Promise<Cart> {
   const secret = (await cookies()).get("cartId")?.value;
   if (!secret) throw new Error("No cart");
@@ -866,14 +888,14 @@ export async function addToCart(
         unitId: "",
       },
       localeParams(),
-      token
+      token,
     );
   }
   return (await fetchCart(secret))!;
 }
 
 export async function updateCart(
-  lines: { id: string; merchandiseId: string; quantity: number }[]
+  lines: { id: string; merchandiseId: string; quantity: number }[],
 ): Promise<Cart> {
   const secret = (await cookies()).get("cartId")?.value;
   if (!secret) throw new Error("No cart");
@@ -891,7 +913,7 @@ export async function updateCart(
         unitId: "",
       },
       localeParams(),
-      token
+      token,
     );
   }
   return (await fetchCart(secret))!;
@@ -906,7 +928,7 @@ export async function removeFromCart(lineIds: string[]): Promise<Cart> {
     await dwDelete(
       `/dwapi/ecommerce/carts/${secret}/items/${id}`,
       localeParams(),
-      token
+      token,
     );
   }
   return (await fetchCart(secret))!;
@@ -923,7 +945,7 @@ export async function removeFromCart(lineIds: string[]): Promise<Cart> {
  * buyer's contract 1399 vs the anonymous list 1599.
  */
 export async function getUserPrice(
-  handle: string
+  handle: string,
 ): Promise<{ withVat: Money; withoutVat: Money } | undefined> {
   const token = await getEffectiveToken();
   if (!token) return undefined;
@@ -936,7 +958,7 @@ export async function getUserPrice(
       sku: handle,
       PageSize: "1",
     },
-    token
+    token,
   );
   const p = res.ok ? res.body?.products?.[0] : undefined;
   if (!p?.price) return undefined;
@@ -974,7 +996,7 @@ const reshapeOrderLine = (l: DwOrderLineFull): OrderLine => ({
   unitPrice: money(l.unitPrice?.price ?? 0, l.unitPrice?.currencyCode),
   totalPrice: money(
     l.totalPriceWithProductDiscounts?.price ?? l.price?.price ?? 0,
-    (l.totalPriceWithProductDiscounts ?? l.price)?.currencyCode
+    (l.totalPriceWithProductDiscounts ?? l.price)?.currencyCode,
   ),
 });
 
@@ -1001,7 +1023,7 @@ export async function getOrders(): Promise<Order[]> {
   const res = await dwGet<{ orders?: DwOrder[] }>(
     "/dwapi/ecommerce/orders",
     { ShopId: DW_SHOP_ID },
-    token
+    token,
   );
   if (!res.ok || !Array.isArray(res.body?.orders)) return [];
   return res.body!.orders!.map(reshapeOrder);
@@ -1014,7 +1036,7 @@ export async function getOrder(secret: string): Promise<Order | undefined> {
   const res = await dwGet<DwOrder>(
     `/dwapi/ecommerce/orders/${encodeURIComponent(secret)}`,
     { ShopId: DW_SHOP_ID },
-    token
+    token,
   );
   if (!res.ok || !res.body || typeof res.body !== "object" || !res.body.id) {
     return undefined;
@@ -1049,7 +1071,7 @@ export async function reorder(orderSecret: string): Promise<Cart | undefined> {
         unitId: "",
       },
       localeParams(),
-      token
+      token,
     );
   }
   return fetchCart(secret);
@@ -1062,7 +1084,7 @@ export async function getAddresses(): Promise<Address[]> {
   const res = await dwGet<Array<Record<string, string | number | boolean>>>(
     "/dwapi/users/addresses/all",
     undefined,
-    token
+    token,
   );
   if (!res.ok || !Array.isArray(res.body)) return [];
   return res.body.map((a) => ({
@@ -1094,7 +1116,7 @@ export type CheckoutInput = {
  * confirmation page. Requires a signed-in session (cart binds to the user).
  */
 export async function placeOrder(
-  input: CheckoutInput
+  input: CheckoutInput,
 ): Promise<{ id: string; secret: string } | { error: string }> {
   const secret = (await cookies()).get("cartId")?.value;
   if (!secret) return { error: "Your cart is empty." };
@@ -1117,14 +1139,14 @@ export async function placeOrder(
       deliveryCity: input.city,
     },
     localeParams(),
-    token
+    token,
   );
 
   const res = await dwPost<DwOrder>(
     `/dwapi/ecommerce/carts/${secret}/createOrder`,
     {},
     localeParams(),
-    token
+    token,
   );
   if (!res.ok || !res.body?.id) {
     return { error: "Order could not be placed. Please try again." };
