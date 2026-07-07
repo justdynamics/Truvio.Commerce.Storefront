@@ -144,6 +144,8 @@ type DwNavNode = {
   link?: string;
   friendlyUrl?: string;
   showInMenu?: boolean;
+  level?: number;
+  pageId?: number;
   nodes?: DwNavNode[];
 };
 
@@ -401,6 +403,34 @@ const flattenNav = (nodes: DwNavNode[]): Menu[] =>
       title: n.name || "",
       path: translateNavPath(n.friendlyUrl || n.link || "/"),
     }));
+
+// The DW headless navigation endpoint returns a FLAT, pre-order list of every
+// node in the area's tree (containers + all descendants), with depth carried in
+// `level` and no nested `nodes`. Extract only the direct children of a named
+// container (e.g. "Header Menu" / "Footer Menu") so a menu renders its own items,
+// not the entire tree. Falls back to nested `nodes` when a backend returns a real tree.
+const navChildrenOf = (
+  nodes: DwNavNode[],
+  containerName: string
+): DwNavNode[] => {
+  const flat = nodes || [];
+  const idx = flat.findIndex(
+    (n) => (n.name || "").trim().toLowerCase() === containerName.toLowerCase()
+  );
+  const container = idx === -1 ? undefined : flat[idx];
+  if (!container) return [];
+  if (container.nodes && container.nodes.length) return container.nodes; // tree case
+  const parentLevel = container.level ?? 1;
+  const out: DwNavNode[] = [];
+  for (let j = idx + 1; j < flat.length; j++) {
+    const child = flat[j];
+    if (!child) continue;
+    const lvl = child.level ?? 1;
+    if (lvl <= parentLevel) break; // reached a sibling/uncle → subtree ended
+    if (lvl === parentLevel + 1) out.push(child); // direct child only
+  }
+  return out;
+};
 
 // ---------------------------------------------------------------------------
 // Product search surface (Headless repository / Products query)
@@ -682,29 +712,52 @@ export async function getMenu(handle: string): Promise<Menu[]> {
     { LanguageId: DW_LANGUAGE_ID }
   );
   if (!res.ok || !res.body?.nodes) return [];
-  return flattenNav(res.body.nodes);
+  // The header/footer components pass Shopify-era handles; map them to the DW
+  // headless menu containers and return only that container's items (not the
+  // whole flat tree of every page/section).
+  const container = /footer/i.test(handle) ? "Footer Menu" : "Header Menu";
+  return flattenNav(navChildrenOf(res.body.nodes, container));
 }
 
 export async function getPage(handle: string): Promise<Page> {
   const now = new Date().toISOString();
-  // Content pages resolve by URL; the headless skeleton exposes a limited tree.
-  const res = await dwGet<{
-    id?: number;
-    name?: string;
-    title?: string;
-    description?: string;
-  }>("/dwapi/content/pages/url", {
-    ...localeParams(),
-    url: `/${handle}`,
-  });
-  const b = res.ok ? res.body : undefined;
+  // The Delivery API's URL→page resolver (/content/pages/url) requires the area
+  // to be domain-bound and is unavailable on some hosts. Resolve the page id via
+  // the navigation (always available), then fetch the page by id.
+  let id: number | undefined;
+  const nav = await dwGet<{ nodes?: DwNavNode[] }>(
+    `/dwapi/frontend/navigations/${DW_AREA_ID}`,
+    { LanguageId: DW_LANGUAGE_ID }
+  );
+  if (nav.ok && nav.body?.nodes) {
+    const slug = handle.toLowerCase();
+    const hit = nav.body.nodes.find((n) => {
+      const p = (n.friendlyUrl || n.link || "")
+        .toLowerCase()
+        .replace(/\/+$/, "");
+      return p === `/${slug}` || p.endsWith(`/${slug}`);
+    });
+    id = hit?.pageId;
+  }
+  let b:
+    | { id?: number; name?: string; title?: string; description?: string }
+    | undefined;
+  if (id != null) {
+    const detail = await dwGet<{
+      id?: number;
+      name?: string;
+      title?: string;
+      description?: string;
+    }>(`/dwapi/content/pages/${id}`, { LanguageId: DW_LANGUAGE_ID });
+    if (detail.ok) b = detail.body;
+  }
   return {
-    id: String(b?.id ?? handle),
+    id: String(b?.id ?? id ?? handle),
     title: b?.title || b?.name || handle,
     handle,
     body: b?.description || "",
     bodySummary: b?.description || "",
-    seo: { title: b?.title || handle, description: b?.description || "" },
+    seo: { title: b?.title || b?.name || handle, description: b?.description || "" },
     createdAt: now,
     updatedAt: now,
   };
