@@ -751,6 +751,87 @@ export async function getCollections(): Promise<Collection[]> {
   ];
 }
 
+export type CollectionTreeNode = {
+  title: string;
+  handle: string; // DW group id
+  path: string; // /search/{groupId}
+  children: { title: string; handle: string; path: string }[];
+};
+
+// Curated two-level group hierarchy for the storefront collections nav.
+//
+// The DW Delivery API exposes NO group parent/child relationships on this host:
+// `/dwapi/ecommerce/groups` returns a flat list and ignores `ParentGroupId`,
+// and there is no group-tree endpoint. So the hierarchy is curated from the
+// real catalogue — every id is a verified SHOP1 group that has imaged products,
+// organised under logical umbrella parents (each parent is itself a real
+// umbrella group, so its heading links to a broad product set and the children
+// narrow it down). Groups with no imaged products (e.g. GROUP52 "Wheels &
+// Tires", whose GroupID filter errors backend-side) are intentionally omitted
+// so no link lands on an empty page. See CUSTOMISATIONS.md.
+const COLLECTION_TREE: Array<[string, string, Array<[string, string]>]> = [
+  [
+    "Bikes",
+    "GROUP1",
+    [
+      ["E-bikes", "GROUP130"],
+      ["Mountain bikes", "GROUP2"],
+      ["Road bikes", "GROUP5"],
+      ["Classic bikes", "GROUP58"],
+    ],
+  ],
+  [
+    "Components",
+    "GROUP46",
+    [
+      ["Frames", "GROUP47"],
+      ["Forks", "GROUP49"],
+      ["Crank & Pedal", "GROUP59"],
+      ["Saddles", "GROUP55"],
+      ["Chain & Cassette", "GROUP143"],
+    ],
+  ],
+  [
+    "Apparel",
+    "GROUP9",
+    [
+      ["Jerseys", "GROUP32"],
+      ["Jackets", "GROUP61"],
+      ["Shorts", "GROUP138"],
+      ["Shoes", "GROUP139"],
+      ["Gloves", "GROUP136"],
+      ["Caps", "GROUP137"],
+    ],
+  ],
+  [
+    "Accessories",
+    "GROUP156",
+    [
+      ["Helmets", "GROUP157"],
+      ["Lights", "GROUP158"],
+      ["Locks", "GROUP159"],
+      ["Glasses", "GROUP160"],
+      ["Racks", "GROUP161"],
+      ["Baskets", "GROUP162"],
+    ],
+  ],
+  ["Sale", "GROUP35", []],
+];
+
+/** The curated group hierarchy as collection nodes (paths → /search/{id}). */
+export async function getCollectionTree(): Promise<CollectionTreeNode[]> {
+  return COLLECTION_TREE.map(([title, handle, children]) => ({
+    title,
+    handle,
+    path: `/search/${handle}`,
+    children: children.map(([t, g]) => ({
+      title: t,
+      handle: g,
+      path: `/search/${g}`,
+    })),
+  }));
+}
+
 export async function getMenu(handle: string): Promise<Menu[]> {
   "use cache";
   cacheTag(TAGS.collections);
