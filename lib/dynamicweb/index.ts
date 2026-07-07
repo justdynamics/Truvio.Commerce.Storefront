@@ -412,22 +412,38 @@ const flattenNav = (nodes: DwNavNode[]): Menu[] =>
       path: translateNavPath(n.friendlyUrl || n.link || "/"),
     }));
 
-// The DW headless navigation endpoint returns a FLAT, pre-order list of every
-// node in the area's tree (containers + all descendants), with depth carried in
-// `level` and no nested `nodes`. Extract only the direct children of a named
-// container (e.g. "Header Menu" / "Footer Menu") so a menu renders its own items,
-// not the entire tree. Falls back to nested `nodes` when a backend returns a real tree.
+// Extract only the direct children of a named container ("Header Menu" /
+// "Footer Menu") so a menu renders its own items, not the whole tree. The
+// container may sit anywhere in the tree (with ExpandMode=All it is NESTED
+// under the area's top "Navigation" node, at level 2), so search recursively
+// for it. Two backend response shapes are supported:
+//   - nested tree: the container carries its items in `.nodes`
+//   - flat pre-order list: items follow the container with `level` = parent+1
 const navChildrenOf = (
   nodes: DwNavNode[],
   containerName: string
 ): DwNavNode[] => {
-  const flat = nodes || [];
-  const idx = flat.findIndex(
-    (n) => (n.name || "").trim().toLowerCase() === containerName.toLowerCase()
-  );
-  const container = idx === -1 ? undefined : flat[idx];
+  const want = containerName.trim().toLowerCase();
+
+  // Depth-first search for the container node anywhere in the (possibly nested)
+  // tree — the flat-list top level is just the degenerate no-`.nodes` case.
+  const findContainer = (ns: DwNavNode[]): DwNavNode | undefined => {
+    for (const n of ns) {
+      if ((n.name || "").trim().toLowerCase() === want) return n;
+      const nested = n.nodes && findContainer(n.nodes);
+      if (nested) return nested;
+    }
+    return undefined;
+  };
+
+  const container = findContainer(nodes || []);
   if (!container) return [];
   if (container.nodes && container.nodes.length) return container.nodes; // tree case
+
+  // Flat-list fallback: slice the container's direct children by level.
+  const flat = nodes || [];
+  const idx = flat.indexOf(container);
+  if (idx === -1) return [];
   const parentLevel = container.level ?? 1;
   const out: DwNavNode[] = [];
   for (let j = idx + 1; j < flat.length; j++) {
