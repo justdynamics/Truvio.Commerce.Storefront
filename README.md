@@ -29,6 +29,14 @@ Serializer engine → Serialized baselines → DemoThemes → Feature packs → 
   harness and gate-validated there.
 - **Swift version target:** rolling latest-only. Currently **Swift 2.3** — see the
   `swift/2.3` stamp at the repo root. Rolls forward when 2.4 ships; the prior is dropped.
+- **Compatibility statement:** `compat` in `package.json` — the same shape the
+  Distribution's base contract carries (`layers/base/base.contract.json`), scoped to what a
+  headless consumer actually needs: the DW platform floor (`dw.min`) and the Delivery API it
+  drives (`deliveryApi.base`, `deliveryApi.openapi`). It is a **floor**, not a support matrix.
+  No serializer entry: this repo never deserializes a layer — it reads `/dwapi` over HTTP. No
+  Swift entry either: the Delivery API is design-package-independent (the `headless-demo`
+  edition is gate-proven with zero Swift dependency), so the Swift target stays the `swift/2.3`
+  stamp above and nothing restates it.
 
 ## Status
 
@@ -79,6 +87,7 @@ merge gate.
 - `app/`, `components/`, `lib/`, `fonts/` — the Next.js starter (structure intact).
 - `lib/shopify/` — the default provider (placeholder; replaced by the DW provider).
 - `swift/2.3` — Swift-version stamp for the rolling latest-only target.
+- `package.json` `compat` — the DW platform floor + the Delivery API this storefront drives.
 - `docs/` — architecture, parity matrix (later), upstream reference.
 - `ADR/` — architecture decision records.
 - `CONTRIBUTING.md` — the merge gate.
