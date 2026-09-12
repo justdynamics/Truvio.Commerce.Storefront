@@ -34,13 +34,13 @@ A change is mergeable only when:
    present tense — no fix-history narration, no internal phase numbers.
 
 6. **Ecosystem gate is green.** Changes that depend on backend/content behavior must
-   keep the harness gate green: the `baseline/headless/2.3` package deserializes cleanly
-   and `Invoke-Verify` stays green on the supported Swift version (2.3). Evidence lives
+   keep the harness gate green: the `baseline/headless/2.4` package deserializes cleanly
+   and `Invoke-Verify` stays green on the supported Swift version (2.4). Evidence lives
    in the harness `runs/`, referenced from the PR.
 
 ## Constraints (inherited standing rules)
 
-- **Rolling latest-only Swift** support — currently Swift 2.3 (`swift/2.3` stamp). Roll
+- **Rolling latest-only Swift** support — currently Swift 2.4 (`swift/2.4` stamp). Roll
   forward when 2.4 ships; drop the prior. No multi-version matrix.
 - **Zero custom backend code in the baseline.** The storefront consumes content; it does
   not require custom C#/providers in the DW10 baseline.

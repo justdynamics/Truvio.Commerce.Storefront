@@ -18,17 +18,17 @@ across layers. This repo adds the **headless frontend** layer:
 
 ```
 Serializer engine → Serialized baselines → DemoThemes → Feature packs → Headless Storefront (this repo)
-   (external)         swift/2.3            (disk overlay)  (custom-code)   (Next.js, DW10-driven)
+   (external)         swift/2.4            (disk overlay)  (custom-code)   (Next.js, DW10-driven)
 ```
 
 - **Backend:** DynamicWeb 10 + SQL Server, exposing content/commerce through its
   headless surface (Delivery API and/or GraphQL/OData — the integration approach is an
   open design fork resolved by `ADR/ADR-001-backend-integration.md`, authored next).
-- **Content:** supplied by a dedicated serialized baseline `baseline/headless/2.3`
-  (zero-custom-code YAML, a distinct product line from `swift/2.3`), authored in the
+- **Content:** supplied by a dedicated serialized baseline `baseline/headless/2.4`
+  (zero-custom-code YAML, a distinct product line from `swift/2.4`), authored in the
   harness and gate-validated there.
-- **Swift version target:** rolling latest-only. Currently **Swift 2.3** — see the
-  `swift/2.3` stamp at the repo root. Rolls forward when 2.4 ships; the prior is dropped.
+- **Swift version target:** rolling latest-only. Currently **Swift 2.4** — see the
+  `swift/2.4` stamp at the repo root. Rolls forward when the next release ships; the prior is dropped.
 - **Compatibility statement:** `compat` in `package.json` — the same shape the
   Distribution's base contract carries (`layers/base/base.contract.json`), scoped to what a
   headless consumer actually needs: the DW platform floor (`dw.min`) and the Delivery API it
@@ -86,7 +86,7 @@ merge gate.
 
 - `app/`, `components/`, `lib/`, `fonts/` — the Next.js starter (structure intact).
 - `lib/shopify/` — the default provider (placeholder; replaced by the DW provider).
-- `swift/2.3` — Swift-version stamp for the rolling latest-only target.
+- `swift/2.4` — Swift-version stamp for the rolling latest-only target.
 - `package.json` `compat` — the DW platform floor + the Delivery API this storefront drives.
 - `docs/` — architecture, parity matrix (later), upstream reference.
 - `ADR/` — architecture decision records.
