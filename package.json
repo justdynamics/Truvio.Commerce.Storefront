@@ -1,5 +1,18 @@
 {
   "private": true,
+  "compat": {
+    "dw": {
+      "min": "10.28.1"
+    },
+    "swift": {
+      "floor": "==2.4",
+      "stamp": "swift/2.4"
+    },
+    "deliveryApi": {
+      "base": "/dwapi",
+      "openapi": "/dwapi/api.json"
+    }
+  },
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",
