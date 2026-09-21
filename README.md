@@ -31,8 +31,10 @@ Serializer engine → Serialized baselines → DemoThemes → Feature packs → 
   `swift/2.4` stamp at the repo root. Rolls forward when the next release ships; the prior is dropped.
 - **Compatibility statement:** `compat` in `package.json` — the same shape the
   Distribution's base contract carries (`layers/base/base.contract.json`), scoped to what a
-  headless consumer actually needs: the DW platform floor (`dw.min`) and the Delivery API it
-  drives (`deliveryApi.base`, `deliveryApi.openapi`). It is a **floor**, not a support matrix.
+  headless consumer actually needs: the Dynamicweb hosting ring it is proven on (`dw.ring`,
+  `dw.tfm`) plus the floor it installs from (`dw.min`), and the Delivery API it drives
+  (`deliveryApi.base`, `deliveryApi.openapi`). Proven on Dynamicweb release ring R1
+  (milestone 10.28, .NET 10), installs on 10.28.1 or newer.
   No serializer entry: this repo never deserializes a layer — it reads `/dwapi` over HTTP. No
   Swift entry either: the Delivery API is design-package-independent (the `headless-demo`
   edition is gate-proven with zero Swift dependency), so the Swift target stays the `swift/2.3`
