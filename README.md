@@ -35,7 +35,7 @@ Serializer engine → Serialized baselines → DemoThemes → Feature packs → 
   drives (`deliveryApi.base`, `deliveryApi.openapi`). It is a **floor**, not a support matrix.
   No serializer entry: this repo never deserializes a layer — it reads `/dwapi` over HTTP. No
   Swift entry either: the Delivery API is design-package-independent (the `headless-demo`
-  edition is gate-proven with zero Swift dependency), so the Swift target stays the `swift/2.3`
+  edition is gate-proven with zero Swift dependency), so the Swift target stays the `swift/2.4`
   stamp above and nothing restates it.
 
 ## Status
@@ -68,7 +68,7 @@ Shopify provider seam; the DynamicWeb provider will introduce its own variables 
 (footer menu, homepage collections, the not-found page). The stock starter therefore
 needs a provider endpoint that returns HTTP 200 to build. Two facts, both verified:
 
-- With an **unreachable** placeholder domain, `pnpm build` fails in the *export* phase
+- With an **unreachable** placeholder domain, `pnpm build` fails in the _export_ phase
   (compile succeeds; static prerender cannot fetch). This is expected for the stock
   starter offline.
 - With **any** provider endpoint returning HTTP 200 with empty-but-valid GraphQL
