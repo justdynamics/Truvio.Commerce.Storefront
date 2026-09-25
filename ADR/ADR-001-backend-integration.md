@@ -1,5 +1,8 @@
 # ADR-001: Backend Integration — DynamicWeb 10 Delivery API behind the Vercel Commerce provider contract
 
+> **2026-09-25 note:** this record captures a DW 10.26.9 / Swift 2.3 run, taken before the
+> 10.28.1 floor. It is kept as history, not current proof.
+
 - Status: Accepted
 - Date: 2026-07-03
 - Deciders: storefront-backend-research (STOREFRONT-PHASE §4.2, open design fork D2)
@@ -27,27 +30,27 @@ host (v10.26.9, 93 operations). **There is no GraphQL and no OData surface** —
 
 Relevant endpoints (all verified live):
 
-| Concern | Method + path | Auth |
-|---|---|---|
-| Product detail | `GET /dwapi/ecommerce/products/{id}` (+ `/{id}/{variantId}`) | anonymous |
-| Product list (index/facets) | `POST /dwapi/ecommerce/products` · `GET /dwapi/ecommerce/products/search` | anonymous |
-| Product list (index-free) | `GET /dwapi/ecommerce/products/search?ProductIds=…` | anonymous |
-| Variants | `GET /dwapi/ecommerce/variants/{productId}` | anonymous |
-| Related / BOM | `GET /dwapi/ecommerce/products/{id}/related` · `/{id}/bom` | anonymous |
-| Groups (collections) | `GET /dwapi/ecommerce/groups` · `/groups/{groupId}` | anonymous |
-| Navigation / menu | `GET /dwapi/frontend/navigations/{areaId}` | anonymous |
-| Content pages | `GET /dwapi/content/pages` · `/pages/{id}` · `/pages/url` | anonymous |
-| Page rows / paragraphs | `GET /dwapi/content/rows/{pageId}/{device}` · `/content/paragraphs` | anonymous |
-| Areas (site/domain map) | `GET /dwapi/content/areas` · `/areas/{id}` · `/areas/domain/{domain}` | anonymous |
-| Cart | `POST /dwapi/ecommerce/carts/create` · `GET/PATCH/DELETE /carts/{secret}` · `/{secret}/items` · `/{secret}/createOrder` · `/{secret}/checkout` | cart secret (anon ok) |
-| Countries/currencies | `GET /dwapi/ecommerce/International/countries` · `/currencies` | anonymous |
-| Orders | `GET /dwapi/ecommerce/orders` · `/orders/{secret}` · `/orders/search` | **Bearer JWT** |
-| Addresses / profile | `GET/PATCH /dwapi/users/addresses…` · `/users/info…` | **Bearer JWT** |
-| Favorites (wishlist) | `GET/POST /dwapi/ecommerce/favorites/lists…` | Bearer JWT |
-| Loyalty points | `GET /dwapi/ecommerce/loyaltyPoints/balance` · `/transactions` | Bearer JWT |
-| **CSR impersonation (B2B)** | `GET /dwapi/users/impersonatees` · `/users/impersonate` | Bearer JWT |
-| User auth | `POST /dwapi/users/token` · `POST/GET /dwapi/users/authenticate` · `/authenticate/refresh` | credentials → JWT |
-| Password flows | `POST /dwapi/users/password/{change,reset,recover…}` | mixed |
+| Concern                     | Method + path                                                                                                                                  | Auth                  |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- |
+| Product detail              | `GET /dwapi/ecommerce/products/{id}` (+ `/{id}/{variantId}`)                                                                                   | anonymous             |
+| Product list (index/facets) | `POST /dwapi/ecommerce/products` · `GET /dwapi/ecommerce/products/search`                                                                      | anonymous             |
+| Product list (index-free)   | `GET /dwapi/ecommerce/products/search?ProductIds=…`                                                                                            | anonymous             |
+| Variants                    | `GET /dwapi/ecommerce/variants/{productId}`                                                                                                    | anonymous             |
+| Related / BOM               | `GET /dwapi/ecommerce/products/{id}/related` · `/{id}/bom`                                                                                     | anonymous             |
+| Groups (collections)        | `GET /dwapi/ecommerce/groups` · `/groups/{groupId}`                                                                                            | anonymous             |
+| Navigation / menu           | `GET /dwapi/frontend/navigations/{areaId}`                                                                                                     | anonymous             |
+| Content pages               | `GET /dwapi/content/pages` · `/pages/{id}` · `/pages/url`                                                                                      | anonymous             |
+| Page rows / paragraphs      | `GET /dwapi/content/rows/{pageId}/{device}` · `/content/paragraphs`                                                                            | anonymous             |
+| Areas (site/domain map)     | `GET /dwapi/content/areas` · `/areas/{id}` · `/areas/domain/{domain}`                                                                          | anonymous             |
+| Cart                        | `POST /dwapi/ecommerce/carts/create` · `GET/PATCH/DELETE /carts/{secret}` · `/{secret}/items` · `/{secret}/createOrder` · `/{secret}/checkout` | cart secret (anon ok) |
+| Countries/currencies        | `GET /dwapi/ecommerce/International/countries` · `/currencies`                                                                                 | anonymous             |
+| Orders                      | `GET /dwapi/ecommerce/orders` · `/orders/{secret}` · `/orders/search`                                                                          | **Bearer JWT**        |
+| Addresses / profile         | `GET/PATCH /dwapi/users/addresses…` · `/users/info…`                                                                                           | **Bearer JWT**        |
+| Favorites (wishlist)        | `GET/POST /dwapi/ecommerce/favorites/lists…`                                                                                                   | Bearer JWT            |
+| Loyalty points              | `GET /dwapi/ecommerce/loyaltyPoints/balance` · `/transactions`                                                                                 | Bearer JWT            |
+| **CSR impersonation (B2B)** | `GET /dwapi/users/impersonatees` · `/users/impersonate`                                                                                        | Bearer JWT            |
+| User auth                   | `POST /dwapi/users/token` · `POST/GET /dwapi/users/authenticate` · `/authenticate/refresh`                                                     | credentials → JWT     |
+| Password flows              | `POST /dwapi/users/password/{change,reset,recover…}`                                                                                           | mixed                 |
 
 ### Auth model (confirmed on the host)
 
@@ -117,15 +120,15 @@ intact. Do **not** rewrite the domain layer (rejecting (b)).
 
 ## Mapping table — Vercel Commerce domain type → DW concept
 
-| Vercel type | DW source (endpoint) | Field mapping (Vercel ← DW) |
-|---|---|---|
-| **Product** | `GET /ecommerce/products/{id}`, items of `ProductListViewModel.products[]` | `id ← id` (+`variantId`); `handle ← number`/slug(id); `title ← name`; `description ← shortDescription`, `descriptionHtml ← longDescription`; `priceRange.{min,max}VariantPrice ← price`/`prices[]`; `variants ← variantInfo` + `GET /variants/{id}`; `options ← variantInfo` groups; `featuredImage`/`images ← imagePatternImages`/`assetCategories`; `availableForSale ← active && (neverOutOfstock || stockLevel>0)`; `seo ← {metaTitle,metaDescription}`; `tags ← keywords`/`productFields`; `updatedAt ← updated` |
-| **Collection** | `GET /ecommerce/groups`, `GET /ecommerce/groups/{groupId}` | `handle ← id` (e.g. `GROUP1`); `title ← name`; `description ← description`; `seo ← {title,metaDescription}`; `path ← '/search/'+id` (or resolve `primaryPageId` → page path); `products ← GET /ecommerce/products?GroupId=id` (index) with `ProductIds` fallback |
-| **Cart** | `POST /ecommerce/carts/create`; `GET/PATCH /ecommerce/carts/{secret}`; `/{secret}/items`; `/{secret}/checkout` | `id ← secret`; `checkoutUrl ← /ecommerce/carts/{secret}/checkout`; `cost.{subtotal,total,totalTax}Amount ← cart price fields`; `lines ← order/cart lines`; `totalQuantity ← line qty sum` |
-| **Menu** | `GET /frontend/navigations/{areaId}` | `Menu[] ← nodes[]` recursively → `{ title ← node.title, path ← node.link/friendlyUrl }`; root from `nodes`, active via `activeNode` |
-| **Page** | `GET /content/pages`, `/pages/{id}`, `/pages/url`; body via `GET /content/rows/{pageId}/{device}` or `/content/paragraphs` | `handle ← path`; `title ← title`/`name`; `body ← rows/paragraphs` (rendered/HTML); `bodySummary ← description`; `seo ← {title,description,keywords}`; `createdAt ← createdDate`, `updatedAt ← updatedDate` |
-| **(Site context)** | `GET /content/areas` | Area 3 = "Swift 2", Area 27 = "Swift 2 Nederlands". Area carries `ecomShopId`/`ecomLanguageId`/`ecomCurrencyCode` bindings used to seed the provider's `DW_*` defaults. |
-| **Search / facets** | `POST /ecommerce/products` / `GET /ecommerce/products/search` (`RepositoryName`+`QueryName`, `FacetGroupNames`, `PageSize`, `CurrentPage`, `SortBy`) | `products ← ProductListViewModel.products[]`; `pageInfo ← {pageSize,pageCount,currentPage,totalProductsCount}`; facets ← `FacetGroupSettings`. **Requires a provisioned repository Query — see Gaps.** |
+| Vercel type         | DW source (endpoint)                                                                                                                                 | Field mapping (Vercel ← DW)                                                                                                                                                                                                                                                                                                                                                                          |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --- | ------------------------------------------------------------------------------------------------------------- |
+| **Product**         | `GET /ecommerce/products/{id}`, items of `ProductListViewModel.products[]`                                                                           | `id ← id` (+`variantId`); `handle ← number`/slug(id); `title ← name`; `description ← shortDescription`, `descriptionHtml ← longDescription`; `priceRange.{min,max}VariantPrice ← price`/`prices[]`; `variants ← variantInfo` + `GET /variants/{id}`; `options ← variantInfo` groups; `featuredImage`/`images ← imagePatternImages`/`assetCategories`; `availableForSale ← active && (neverOutOfstock |     | stockLevel>0)`; `seo ← {metaTitle,metaDescription}`; `tags ← keywords`/`productFields`; `updatedAt ← updated` |
+| **Collection**      | `GET /ecommerce/groups`, `GET /ecommerce/groups/{groupId}`                                                                                           | `handle ← id` (e.g. `GROUP1`); `title ← name`; `description ← description`; `seo ← {title,metaDescription}`; `path ← '/search/'+id` (or resolve `primaryPageId` → page path); `products ← GET /ecommerce/products?GroupId=id` (index) with `ProductIds` fallback                                                                                                                                     |
+| **Cart**            | `POST /ecommerce/carts/create`; `GET/PATCH /ecommerce/carts/{secret}`; `/{secret}/items`; `/{secret}/checkout`                                       | `id ← secret`; `checkoutUrl ← /ecommerce/carts/{secret}/checkout`; `cost.{subtotal,total,totalTax}Amount ← cart price fields`; `lines ← order/cart lines`; `totalQuantity ← line qty sum`                                                                                                                                                                                                            |
+| **Menu**            | `GET /frontend/navigations/{areaId}`                                                                                                                 | `Menu[] ← nodes[]` recursively → `{ title ← node.title, path ← node.link/friendlyUrl }`; root from `nodes`, active via `activeNode`                                                                                                                                                                                                                                                                  |
+| **Page**            | `GET /content/pages`, `/pages/{id}`, `/pages/url`; body via `GET /content/rows/{pageId}/{device}` or `/content/paragraphs`                           | `handle ← path`; `title ← title`/`name`; `body ← rows/paragraphs` (rendered/HTML); `bodySummary ← description`; `seo ← {title,description,keywords}`; `createdAt ← createdDate`, `updatedAt ← updatedDate`                                                                                                                                                                                           |
+| **(Site context)**  | `GET /content/areas`                                                                                                                                 | Area 3 = "Swift 2", Area 27 = "Swift 2 Nederlands". Area carries `ecomShopId`/`ecomLanguageId`/`ecomCurrencyCode` bindings used to seed the provider's `DW_*` defaults.                                                                                                                                                                                                                              |
+| **Search / facets** | `POST /ecommerce/products` / `GET /ecommerce/products/search` (`RepositoryName`+`QueryName`, `FacetGroupNames`, `PageSize`, `CurrentPage`, `SortBy`) | `products ← ProductListViewModel.products[]`; `pageInfo ← {pageSize,pageCount,currentPage,totalProductsCount}`; facets ← `FacetGroupSettings`. **Requires a provisioned repository Query — see Gaps.**                                                                                                                                                                                               |
 
 ## `@vercel/*` and Shopify coupling disposition
 
@@ -162,6 +165,7 @@ The `lib/dynamicweb/` provider was implemented and proven live against the harne
 and the workarounds adopted, are recorded here so the mapping is reproducible.
 
 ### Product list / search — the `POST` model stays unusable; `GET /search` is canonical
+
 `POST /dwapi/ecommerce/products` returns **400 for every probed body** (confirmed again). The
 provider uses **`GET /dwapi/ecommerce/products/search`** exclusively, with
 `RepositoryName=Headless&QueryName=Products` + `LanguageId`/`ShopId`/`CurrencyCode`/`CountryCode`.
@@ -172,12 +176,14 @@ Verified live params: `q` (text), `sku` (reverse-resolve a product number → id
 `facetGroups[i].facets[j].options[]` as `{name,label,value,count,selected}`.
 
 ### Slug contract — resolve via search, reshape the hit directly
+
 Search result items carry the **same rich view-model as product detail** (price, `variantInfo`,
 `groups`), so `getProduct(handle)` does `search({sku:handle})` and reshapes `products[0]` with no
 second detail call; a direct `GET /products/{handle}` is only a fallback. Handle = product
 `number` per the baseline slug contract.
 
 ### Variants — nested tree, flattened by a recursive walk
+
 `GET /dwapi/ecommerce/variants/{productId}` returns a **nested** structure: each level is a
 variant group (`variantInfoGroupName`, e.g. "Colors" → "Shoe size") whose `variantInfo[]` are the
 options, each carrying its own child `variantInfo[]`. The provider walks it into flat Vercel
@@ -187,6 +193,7 @@ Merchandise ids are encoded `productId` (simple) or `productId::variantId` (vari
 on cart writes. Proven: `PROD340` renders "Colors" + "Shoe size" with Red/Blue/Black/Green.
 
 ### Cart — full `OrderLineViewModel` required; locale params mandatory on every call
+
 - **Create** (`POST /carts/create`) requires `LanguageId`, `ShopId`, `CurrencyCode`, **and
   `CountryCode`** as query params (a bare call 400s listing all four). Returns the cart `secret`
   (stored in the `cartId` cookie).
@@ -201,32 +208,38 @@ on cart writes. Proven: `PROD340` renders "Colors" + "Shoe size" with Red/Blue/B
   anonymous product detail (`false`). The provider uses the cart's own `price`/`totalTaxes`.
 
 ### Checkout — handoff-only
+
 No hosted headless checkout page exists in the baseline. `checkoutUrl` is set to the reachable
 `…/carts/{secret}/checkout` Delivery-API endpoint (exists; 400 without a checkout payload). The
 storefront hands off; completing a DW order (`/carts/{secret}/createOrder`) + a checkout UI is
 deferred to wave 3.
 
 ### Images — none in the catalog
+
 All 378 products return **empty** `imagePatternImages`/`assetCategories`. The provider maps real
 DW media to `/Files/**` on the host (allowed in `next.config.ts` `remotePatterns`) when present,
 but falls back to a same-origin `/placeholder.svg` — which is what renders today.
 
 ### Menu — backend link paths
+
 `GET /dwapi/frontend/navigations/{areaId}` (area 5 = `Headless`) returns recursive `nodes[]` with
 `name` (title) + `link` (path). Links are DW backend paths (`/headless/*`); Next prefetch 404s on
 them (cosmetic). A DW-path → storefront-route translation is a wave-3 item.
 
 ### Revalidation & Vercel couplings
+
 The Shopify webhook route was re-pointed to `lib/dynamicweb.revalidate` (guarded by
 `DW_REVALIDATION_SECRET`, tag-revalidates content); freshness otherwise rides time-based
 `cacheLife` on each provider fn. No `@vercel/*` runtime deps were present in the scaffolded
 `package.json`, so none needed removal — only `lib/shopify/**` + `SHOPIFY_*` env were removed.
 
 ### TLS
+
 Self-signed dev host only: the provider sets `NODE_TLS_REJECT_UNAUTHORIZED=0` at module load when
 `DW_ALLOW_SELF_SIGNED=1` (and it is exported when running dev/build/start). Never for production.
 
 ### Dev-server caveat (not a provider bug)
+
 `next dev --turbopack` 500s on PLP/PDP with a Tailwind v4 CSS parse error — the Turbopack CSS
 scanner mis-reads product-content strings in the RSC stream as arbitrary class names. The
 **production build** (source-only scanner) is unaffected: `next build` passes and `next start`
